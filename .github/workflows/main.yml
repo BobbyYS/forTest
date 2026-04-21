@@ -25,9 +25,12 @@ jobs:
           pip install pandas numpy yfinance twstock tqdm requests gspread oauth2client
 
       - name: Create Google Service Account JSON
+        env:
+          GCP_JSON: ${{ secrets.GCP_SA_JSON }}
         run: |
           # 從 GitHub Secret 讀取內容並生成 json 檔案供程式讀取
-          echo "${{ secrets.GCP_SA_JSON }}" > service_account.json
+          echo "$GCP_JSON" > service_account.json
+          
 
       - name: Run Scanner Script
         env:
