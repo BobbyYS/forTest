@@ -208,26 +208,55 @@ def sync_and_prepare(h, c, d):
     return ai_html, ai_tg_data, h
 
 def send_telegram(ai_tg_list, h_res):
+    """
+    調整：
+    1. 雙重認證標的：無標定時發送告知訊息。
+    2. 持股分析：顯示所有持股，並提供個別評價。
+    """
     url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
     now_str = datetime.now().strftime('%m/%d %H:%M')
     msg = f"<b>📊 台股投資報告 ({now_str})</b>\n\n"
 
+    # --- 1. 深度診斷標的 (雙重認證) ---
     msg += "💎 <b>雙重認證標的 (15min)</b>\n"
-    msg += "\n".join(ai_tg_list) if ai_tg_list else "☕ 今日無符合雙重認證標的。\n"
-    msg += "\n"
+    if ai_tg_list:
+        msg += "\n".join(ai_tg_list)
+    else:
+        msg += "☕ 今日無符合雙重認證標的。"
+    msg += "\n\n"
 
-    if h_res:
-        msg += "🏥 <b>持股健檢提醒</b>\n"
-        alert_count = 0
+    # --- 2. 持股分析與評價 (全量顯示) ---
+    msg += "🏥 <b>持股診斷與評價</b>\n"
+    if not h_res:
+        msg += "目前無庫存資料。"
+    else:
         for item in h_res:
-            if "✅" not in item['建議動作']:
-                msg += f"• {item['名稱']} ({item['代號']}): <b>{item['建議動作']}</b>\n  原因: {item['原因']}\n"
-                alert_count += 1
-        if alert_count == 0:
-            msg += "✅ 目前持股狀態良好，續抱中。\n"
+            # 根據 R 數與動作自動生成診斷評價
+            r_val = float(item['獲利(R)'].replace('R', ''))
+            
+            # 評價邏輯分支
+            if "🛑" in item['建議動作']:
+                comment = "💀 趨勢反轉，執行紀律賣出。"
+            elif "⚠️" in item['建議動作']:
+                comment = "📉 跌破關鍵均線，縮減位能或嚴格守法。"
+            elif r_val >= 2.0:
+                comment = "🔥 獲利豐厚，進入 2R 保本機制，放任獲利奔跑。"
+            elif r_val > 0.5:
+                comment = "💪 走勢強勁，RS 表現優於大盤，穩定續抱。"
+            elif r_val < 0 and r_val > -0.5:
+                comment = "⏳ 處於震盪洗盤期，尚未觸及防守位，耐心觀察。"
+            else:
+                comment = "觀察中，守住防守點位。"
 
+            # 組合訊息
+            msg += f"• <b>{item['名稱']} ({item['代號']})</b>\n"
+            msg += f"  評分：{item['建議動作']}\n"
+            msg += f"  現價：{item['現價']} | 獲利：{item['獲利(R)']}\n"
+            msg += f"  防守：{item['防守價']}\n"
+            msg += f"  診斷：{comment}\n\n"
+
+    # 執行發送
     requests.post(url, data={"chat_id": TG_CHAT_ID, "text": msg, "parse_mode": "HTML"})
-
 def send_email(h, ai_html):
     if not ai_html: return
     style = "<style>body{font-family:sans-serif;line-height:1.6;}.title{background:#2c3e50;color:white;padding:10px;}.table{width:100%;border-collapse:collapse;}.table td,th{border:1px solid #ddd;padding:8px;}</style>"
