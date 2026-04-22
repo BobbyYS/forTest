@@ -258,7 +258,7 @@ def send_telegram(ai_tg_list, h_res):
     # 執行發送
     requests.post(url, data={"chat_id": TG_CHAT_ID, "text": msg, "parse_mode": "HTML"})
 
-def send_email_final(h, c, d, ai_html):
+def send_email(h, c, d, ai_html):
     """
     調整：
     1. 庫存健檢：顯示所有持股並附帶 AI 診斷評價。
