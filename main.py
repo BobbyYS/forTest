@@ -223,7 +223,7 @@ def send_telegram(ai_tg_list, h_res):
         msg += "\n".join(ai_tg_list)
     else:
         msg += "☕ 今日無符合雙重認證標的。"
-    msg += "\n\n"
+    msg += f"\n\n"
 
     # --- 2. 持股分析與評價 (全量顯示) ---
     msg += "🏥 <b>持股診斷與評價</b>\n"
@@ -257,15 +257,100 @@ def send_telegram(ai_tg_list, h_res):
 
     # 執行發送
     requests.post(url, data={"chat_id": TG_CHAT_ID, "text": msg, "parse_mode": "HTML"})
-def send_email(h, ai_html):
-    if not ai_html: return
-    style = "<style>body{font-family:sans-serif;line-height:1.6;}.title{background:#2c3e50;color:white;padding:10px;}.table{width:100%;border-collapse:collapse;}.table td,th{border:1px solid #ddd;padding:8px;}</style>"
-    html = f"<html><head>{style}</head><body><div class='title'>💎 深度診斷報告</div>{ai_html}</body></html>"
-    msg = MIMEMultipart(); msg['Subject'] = f"台股深度分析 - {datetime.now().strftime('%Y-%m-%d')}"
-    msg['From'], msg['To'] = GMAIL_USER, RECEIVER_EMAIL
+
+def send_email_final(h, c, d, ai_html):
+    """
+    調整：
+    1. 庫存健檢：顯示所有持股並附帶 AI 診斷評價。
+    2. 深度分析：顯示 15 分鐘內的雙重認證標的。
+    3. 格式：完整 HTML 樣式，包含主流板塊統計。
+    """
+    # 如果 15 分鐘內完全沒有新資料（且庫存也沒變動，雖然庫存通常都會傳），則可視情況跳過
+    if not ai_html and not c and not d and not h:
+        print("沒有新資料，跳過 Email 通知")
+        return
+
+    # 將資料轉為 DataFrame 方便轉 HTML 表格
+    df_h = pd.DataFrame(h) if h else pd.DataFrame()
+    df_c = pd.DataFrame(c) if c else pd.DataFrame()
+    df_d = pd.DataFrame(d) if d else pd.DataFrame()
+
+    # 處理庫存評價 (同步 Telegram 邏輯)
+    if not df_h.empty:
+        def get_comment(row):
+            r_val = float(row['獲利(R)'].replace('R', ''))
+            if "🛑" in row['建議動作']: return "💀 趨勢反轉，執行紀律賣出。"
+            if "⚠️" in row['建議動作']: return "📉 跌破關鍵均線，縮減位能或嚴格守法。"
+            if r_val >= 2.0: return "🔥 獲利豐厚，進入 2R 保本機制。"
+            if r_val > 0.5: return "💪 走勢強勁，穩定續抱。"
+            return "⏳ 處於震盪洗盤期，耐心觀察。"
+        
+        df_h['AI 診斷評價'] = df_h.apply(get_comment, axis=1)
+        # 移除不需要顯示在郵件表格的欄位
+        df_h = df_h.drop(columns=['created_at'], errors='ignore')
+
+    # 移除掃描結果中的時間戳記欄位（讓表格乾淨點）
+    if not df_c.empty: df_c = df_c.drop(columns=['created_at'], errors='ignore')
+    if not df_d.empty: df_d = df_d.drop(columns=['created_at'], errors='ignore')
+
+    # 統計主流產業
+    top_ind = df_d['產業'].value_counts().head(3).index.tolist() if not df_d.empty else ["觀察中"]
+
+    # --- HTML 樣式設定 ---
+    style = """
+    <style>
+        body { font-family: 'Microsoft JhengHei', sans-serif; line-height: 1.6; color: #333; }
+        .title { background: #2c3e50; color: white; padding: 12px; margin-top: 25px; font-weight: bold; border-radius: 5px; }
+        .ai-box { background: #fffcf0; border: 1px solid #f1c40f; border-left: 6px solid #f1c40f; padding: 15px; margin: 15px 0; font-size: 14px; }
+        .table { border-collapse: collapse; width: 100%; font-size: 13px; margin-bottom: 20px; }
+        .table th, .table td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        .table th { background-color: #f8f9fa; font-weight: bold; }
+        .highlight { color: #e74c3c; font-weight: bold; }
+    </style>
+    """
+    
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M')
+    html = f"""
+    <html>
+    <head>{style}</head>
+    <body>
+        <h2>📈 台股策略投資報告</h2>
+        <p>📅 報告時間：{now_str}</p>
+        <p>💰 主流板塊：<span class='highlight'>{', '.join(top_ind)}</span></p>
+
+        <div class='title'>1. 🏥 庫存健檢 (全持股分析)</div>
+        {df_h.to_html(classes='table', index=False, escape=False) if not df_h.empty else "<p>目前無持股資料</p>"}
+
+        <div class='title' style='background:#8e44ad;'>4. 💎 深度診斷 (15min 雙重認證)</div>
+        <div class='ai-box'>
+            {ai_html if ai_html else "☕ 今日暫無新符合雙重認證之標的。"}
+        </div>
+
+        <div class='title'>2. 🚀 買入型態掃描 (最新)</div>
+        {df_c.to_html(classes='table', index=False, escape=False) if not df_c.empty else "<p>期間內無新標的</p>"}
+
+        <div class='title'>3. 👑 大戶動能評分 (最新)</div>
+        {df_d.to_html(classes='table', index=False, escape=False) if not df_d.empty else "<p>期間內無新標的</p>"}
+        
+        <p style='color: #7f8c8d; font-size: 12px;'>* 本報告由 AI 自動生成，僅供參考，投資請謹慎評估風險。</p>
+    </body>
+    </html>
+    """
+
+    # --- 寄送邏輯 ---
+    msg = MIMEMultipart()
+    msg['Subject'] = f"台股策略報告 - {datetime.now().strftime('%m/%d %H:%M')}"
+    msg['From'] = GMAIL_USER
+    msg['To'] = RECEIVER_EMAIL
     msg.attach(MIMEText(html, 'html'))
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as s:
-        s.login(GMAIL_USER, GMAIL_APP_PASSWORD); s.send_message(msg)
+
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as s:
+            s.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            s.send_message(msg)
+        print("Email 報告已成功寄出。")
+    except Exception as e:
+        print(f"Email 發送失敗: {e}")
 
 if __name__ == "__main__":
     # 讀取 Sheet 中的持股
