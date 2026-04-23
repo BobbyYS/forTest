@@ -214,13 +214,13 @@ def send_telegram(ai_tg_list, h_res):
     2. 持股分析：顯示所有持股，並提供個別評價。
     """
     url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
-    now_str = datetime.now().strftime('%m/%d %H:%M')
+    now_str = datetime.now().strftime('%m/%d')
     msg = f"<b>📊 台股投資報告 ({now_str})</b>\n\n"
 
     # --- 1. 深度診斷標的 (雙重認證) ---
-    msg += "💎 <b>雙重認證標的 (15min)</b>\n"
+    msg += "💎 <b>雙重認證標的</b>\n"
     if ai_tg_list:
-        msg += "\n".join(ai_tg_list)
+        msg += f"\n".join(ai_tg_list)
     else:
         msg += "☕ 今日無符合雙重認證標的。"
     msg += f"\n\n"
@@ -339,7 +339,7 @@ def send_email(h, c, d, ai_html):
 
     # --- 寄送邏輯 ---
     msg = MIMEMultipart()
-    msg['Subject'] = f"台股策略報告 - {datetime.now().strftime('%m/%d %H:%M')}"
+    msg['Subject'] = f"台股策略報告 - {datetime.now().strftime('%m/%d')}"
     msg['From'] = GMAIL_USER
     msg['To'] = RECEIVER_EMAIL
     msg.attach(MIMEText(html, 'html'))
